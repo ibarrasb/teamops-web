@@ -63,7 +63,6 @@ export function LoginPage() {
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="you@example.com"
             {...form.register("email")}
           />
           {form.formState.errors.email ? (
@@ -79,7 +78,6 @@ export function LoginPage() {
             id="password"
             type="password"
             autoComplete="current-password"
-            placeholder="••••••••"
             {...form.register("password")}
           />
           {form.formState.errors.password ? (

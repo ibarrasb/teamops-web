@@ -65,7 +65,6 @@ export function RegisterPage() {
           <Input
             id="displayName"
             autoComplete="name"
-            placeholder="Eddie"
             {...form.register("displayName")}
           />
           {form.formState.errors.displayName ? (
@@ -81,7 +80,6 @@ export function RegisterPage() {
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="you@example.com"
             {...form.register("email")}
           />
           {form.formState.errors.email ? (
@@ -97,7 +95,6 @@ export function RegisterPage() {
             id="password"
             type="password"
             autoComplete="new-password"
-            placeholder="Password123!"
             {...form.register("password")}
           />
           {form.formState.errors.password ? (

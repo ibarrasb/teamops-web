@@ -1,67 +1,69 @@
-import { env } from "./env";
-import { getToken } from "./auth";
-import { ApiError } from "../types/api";
+import { getToken, clearToken } from "@/lib/auth";
 
-type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "";
+
+
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.status = status;
+    this.data = data;
+  }
+}
 
 type RequestOptions<TBody> = {
-  method?: HttpMethod;
   body?: TBody;
-  auth?: boolean; // default true for /api routes, false for /auth routes when used explicitly
+  headers?: Record<string, string>;
   signal?: AbortSignal;
 };
 
-function joinUrl(base: string, path: string) {
-  if (!base) return path;
-  return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
-}
-
-async function parseJsonSafe(res: Response) {
-  const text = await res.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
-export async function api<TResponse, TBody = unknown>(
+async function request<TResponse, TBody = unknown>(
   path: string,
-  options: RequestOptions<TBody> = {}
+  options: RequestOptions<TBody> & { method: string }
 ): Promise<TResponse> {
-  const base = env.apiBaseUrl ?? "";
-  const url = joinUrl(base, path);
+  const token = getToken();
 
-  const method = options.method ?? "GET";
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  const wantsAuth = options.auth ?? true;
-  if (wantsAuth) {
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
-
-  const res = await fetch(url, {
-    method,
-    headers,
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: options.method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers ?? {}),
+    },
     body: options.body ? JSON.stringify(options.body) : undefined,
     signal: options.signal,
   });
 
-  if (!res.ok) {
-    const payload = await parseJsonSafe(res);
-    const message =
-      payload?.message ||
-      payload?.error ||
-      `Request failed (${res.status})`;
+  const contentType = res.headers.get("content-type");
+  const isJson = contentType?.includes("application/json");
+  const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => null);
 
-    throw new ApiError(message, res.status, payload);
+  if (!res.ok) {
+    if (res.status === 401) clearToken();
+    const msg =
+      (typeof data === "object" && data && "message" in data && (data as any).message) ||
+      (typeof data === "string" && data) ||
+      res.statusText ||
+      "Request failed";
+    throw new ApiError(String(msg), res.status, data);
   }
 
-  // Some DELETE endpoints may return empty body
-  const data = (await parseJsonSafe(res)) as TResponse | undefined;
   return data as TResponse;
 }
+
+export const api = {
+  get: <TResponse>(path: string, options?: Omit<RequestOptions<never>, "body">) =>
+    request<TResponse>(path, { method: "GET", ...(options ?? {}) }),
+
+  post: <TResponse, TBody>(path: string, body: TBody, options?: RequestOptions<TBody>) =>
+    request<TResponse, TBody>(path, { method: "POST", body, ...(options ?? {}) }),
+
+  patch: <TResponse, TBody>(path: string, body: TBody, options?: RequestOptions<TBody>) =>
+    request<TResponse, TBody>(path, { method: "PATCH", body, ...(options ?? {}) }),
+
+  del: <TResponse>(path: string, options?: Omit<RequestOptions<never>, "body">) =>
+    request<TResponse>(path, { method: "DELETE", ...(options ?? {}) }),
+};
